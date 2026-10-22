@@ -1,0 +1,37 @@
+[project]
+name = "xcore-dataset"
+version = "0.1.0"
+description = "Remote CR7 EE10 RGBD recording and LeRobot export"
+requires-python = ">=3.12,<3.13"
+dependencies = ["xcore-adapters", "numpy>=2,<3", "pillow>=11", "fastapi>=0.115", "uvicorn>=0.34"]
+
+[project.optional-dependencies]
+dataset = ["lerobot[dataset,hardware]==0.6.0", "torch>=2.7,<2.12", "torchvision>=0.22,<0.27"]
+app = ["LeLab"]
+
+[project.scripts]
+xcore-dataset = "xcore_dataset.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.11,<1", "httpx>=0.27"]
+
+[tool.uv.sources]
+xcore-adapters = {path = "../xcore-adapters", editable = true}
+LeLab = {git = "https://github.com/huggingface/leLab.git", rev = "9b5afaee33baa1d773e499937564f3831d25de22"}
+torch = {index = "pytorch-cpu", marker = "sys_platform == 'linux'"}
+torchvision = {index = "pytorch-cpu", marker = "sys_platform == 'linux'"}
+
+[tool.uv]
+override-dependencies = ["lerobot[dataset,hardware,core-scripts,feetech,training,viz,av-dep,accelerate-dep,pynput-dep,pyserial-dep,deepdiff-dep]==0.6.0"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13"]
+build-backend = "uv_build"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]

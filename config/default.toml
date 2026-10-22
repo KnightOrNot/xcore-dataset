@@ -1,0 +1,8 @@
+[dataset]
+fps = 10
+max_skew_ms = 50
+
+[server]
+host = "127.0.0.1"
+port = 8090
+data_root = "~/project/xcore-data/lerobot"
