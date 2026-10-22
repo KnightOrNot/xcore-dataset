@@ -2,7 +2,9 @@
 name = "xcore-dataset"
 version = "0.1.0"
 description = "Remote CR7 EE10 RGBD recording and LeRobot export"
-requires-python = ">=3.12,<3.13"
+# The converter runs on 3.12; the raw writer is also imported by the remote
+# controller's 3.11 SDK runtime, so the package itself stays 3.11-compatible.
+requires-python = ">=3.11,<3.13"
 dependencies = ["xcore-adapters", "numpy>=2,<3", "pillow>=11", "fastapi>=0.115", "uvicorn>=0.34"]
 
 [project.optional-dependencies]

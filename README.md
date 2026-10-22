@@ -8,6 +8,10 @@
 任务字符串通过 LeRobot task 元数据保存。RGB 为视频，深度为米制 float32 无损 image；
 raw 保留 RGB PNG／原始 uint16 Z16、depth scale、内外参和逐流时间信息。
 
+`requires-python` 为 3.11–3.12：转换、LeRobot 和 LeLab 使用独立 Python 3.12 环境；
+远端 controller 的 3.11 SDK 运行时只导入 `xcore_dataset.raw`（numpy/Pillow），
+不加载 LeRobot、FastAPI 或转换依赖。
+
 ## 本地离线检查
 
 相邻目录须存在 `xcore-adapters/`。使用独立 Python 3.12 环境：
@@ -47,7 +51,8 @@ LeRobot 固定 0.6.0，LeLab 固定提交，Linux 使用 CPU Torch，版本见 `
 
 ## 尚未完成
 
-真实 SDK 反馈／目标和双相机的连续 episode 接入、跨机时钟估计、远端任务调度 API、
+真实 SDK arm／跟随后的连续 episode 已由 controller 接入（代码完成，真机未验收）；
+跨机时钟估计、多 episode 自动转换任务队列与崩溃恢复、远端任务调度 API 仍待实现。
 真机跟随采集均待完成。现有相机 snapshot 的 RGB 是 JPEG，不能转成 PNG 冒充无损采集。
 硬件 TCP／模型未验证前不能将法兰当作夹爪 TCP，也不能将 FK 占位值当实测。
 独立仓库：[KnightOrNot/xcore-dataset](https://github.com/KnightOrNot/xcore-dataset)，
