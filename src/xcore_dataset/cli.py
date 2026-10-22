@@ -30,6 +30,14 @@ def main(argv=None):
     s.add_argument("--root", type=Path)
     s.add_argument("--port", type=int)
     s.add_argument("--without-lelab", action="store_true")
+    q = subs.add_parser("queue", help="enqueue a sealed session for conversion")
+    q.add_argument("session")
+    q.add_argument("--root", type=Path)
+    q.add_argument("--dataset-id")
+    j = subs.add_parser("jobs", help="list or run conversion jobs")
+    j.add_argument("--root", type=Path)
+    j.add_argument("--run", action="store_true")
+    j.add_argument("--retry", metavar="JOB", help="requeue one failed job")
     a = p.parse_args(argv)
     config = tomllib.loads(a.config.read_text())
     if a.command == "demo":
@@ -50,6 +58,24 @@ def main(argv=None):
                 else config["dataset"]["max_skew_ms"],
             )
         )
+    elif a.command == "queue":
+        from .jobs import enqueue
+
+        root = a.root or config["dataset"].get("root", "~/project/xcore-data")
+        result = enqueue(
+            root,
+            a.session,
+            fps=config["dataset"]["fps"],
+            max_skew_ms=config["dataset"]["max_skew_ms"],
+            dataset_id=a.dataset_id,
+        )
+    elif a.command == "jobs":
+        from .jobs import list_jobs, retry, run_pending
+
+        root = a.root or config["dataset"].get("root", "~/project/xcore-data")
+        if a.retry:
+            retry(root, a.retry)
+        result = run_pending(root) if (a.run or a.retry) else list_jobs(root)
     elif a.command == "verify":
         m = verify(a.path)
         result = {"verified": True, "files": len(m["files"])}

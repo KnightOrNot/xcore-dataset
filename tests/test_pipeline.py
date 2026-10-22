@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -48,6 +49,61 @@ def test_real_lerobot_dual_rgbd_roundtrip(tmp_path):
     (output / "quality_report.json").write_text("{}")
     with pytest.raises(ValueError, match="checksum"):
         verify(output)
+
+
+def test_session_with_two_episodes_becomes_one_dataset(tmp_path):
+    session = tmp_path / "raw" / "session_test"
+    for index in range(2):
+        episode = session / "episodes" / f"episode_{index:06d}"
+        episode.parent.mkdir(parents=True, exist_ok=True)
+        make_demo(episode, frames=3)
+    (session / "session.json").write_text(
+        json.dumps({"session": "session_test", "task": "test"})
+    )
+    output = convert(
+        session, tmp_path / "staging", tmp_path / "published", fps=10, max_skew_ms=50
+    )
+    verify(output)
+    report = json.loads((output / "quality_report.json").read_text())
+    assert report["episodes"] and len(report["episodes"]) == 2
+    assert report["output_frames"] == 6
+    assert len(report["source_commits"]) == 2
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    ds = LeRobotDataset("local/published", root=output, depth_output_unit="m")
+    assert len(ds) == 6
+    assert ds.meta.total_episodes == 2
+    assert ds[0]["task"] == "合成数据：移动夹爪"
+
+
+def test_job_queue_publish_and_crash_recovery(tmp_path):
+    from xcore_dataset.jobs import enqueue, list_jobs, run_pending
+
+    root = tmp_path / "data"
+    session = root / "raw" / "session_jobs"
+    episode = session / "episodes" / "episode_000000"
+    episode.parent.mkdir(parents=True)
+    make_demo(episode, frames=3)
+    job = enqueue(root, session, fps=10, max_skew_ms=50)
+    assert job["state"] == "queued" and job["revision"] == "rev-0001"
+    jobs = run_pending(root)
+    assert jobs[0]["state"] == "ready"
+    destination = Path(jobs[0]["destination"])
+    verify(destination)
+    assert not (root / "staging" / jobs[0]["job_id"]).exists()
+    # A second run never republishes or overwrites the ready revision.
+    assert run_pending(root)[0]["state"] == "ready"
+    # Simulate a crash: a fresh job left in running is requeued and completed.
+    job = enqueue(root, session, fps=10, max_skew_ms=50)
+    assert job["revision"] == "rev-0002"
+    path = root / "jobs" / (job["job_id"] + ".json")
+    value = json.loads(path.read_text())
+    value["state"] = "running"
+    path.write_text(json.dumps(value))
+    jobs = run_pending(root)
+    done = [j for j in jobs if j["job_id"] == job["job_id"]]
+    assert done and done[0]["state"] == "ready" and done[0]["attempts"] == 2
+    assert list_jobs(root)[0]["state"] == "ready"
 
 
 def test_partial_tamper_and_bad_sync_rejected(tmp_path):

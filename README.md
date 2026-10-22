@@ -31,6 +31,28 @@ LeRobot 固定 0.6.0，LeLab 固定提交，Linux 使用 CPU Torch，版本见 `
 视频运行环境需可加载对应 FFmpeg 共享库；现场离线部署说明见 controller 的
 `docs/REMOTE_DATA_MILESTONE.md`。
 
+## 会话转换与任务队列
+
+`convert` 的输入可以是一个已封存 episode，也可以是包含
+`episodes/episode_*/COMMITTED.json` 的 session；一个 session 生成一个 LeRobot
+数据集，每个 raw episode 对应一个 LeRobot episode。任一 episode 未封存即拒绝。
+`session.json` 和每个 episode 的 manifest 一起写入 `xcore_manifest.json`，
+质量报告按 episode 记录输入／输出帧、最大时间和来源 `COMMITTED.json` 的 SHA-256。
+
+远端任务队列保存在 `<data_root>/jobs/`，状态机为 queued → running → ready/failed：
+
+```bash
+python -m xcore_dataset.cli queue <session_dir> --root ~/project/xcore-data
+python -m xcore_dataset.cli jobs --root ~/project/xcore-data          # 查看
+python -m xcore_dataset.cli jobs --root ~/project/xcore-data --run    # 执行队列
+python -m xcore_dataset.cli jobs --root ~/project/xcore-data --retry JOB --run
+```
+
+运行中断留在 `running` 的任务会在下次 `--run` 时重新排队；中断的 staging 会改名为
+`<job>.attempt-NN` 保留，不覆盖已发布 revision。转换需要 FFmpeg 7 共享库
+（`LD_LIBRARY_PATH=~/project/xcore-runtime/media/lib:…/torch/lib`，`PATH` 含
+`media/bin`），否则 TorchCodec 加载失败；服务 unit 已带这些环境变量。
+
 ## 文件完整性
 
 `EpisodeWriter` 只在图像存在、记录校验和落盘后发布 `COMMITTED.json`。

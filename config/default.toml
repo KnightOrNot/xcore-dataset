@@ -1,4 +1,6 @@
 [dataset]
+# Remote data root: raw/, staging/, lerobot/, jobs/, reports/.
+root = "~/project/xcore-data"
 fps = 10
 max_skew_ms = 50
 
