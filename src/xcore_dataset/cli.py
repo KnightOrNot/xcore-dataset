@@ -43,6 +43,11 @@ def main(argv=None):
     j.add_argument("--retry", metavar="JOB", help="requeue one failed job")
     ds = subs.add_parser("datasets", help="list published revisions")
     ds.add_argument("--root", type=Path)
+    ex = subs.add_parser("export", help="prepare a published revision for local pull")
+    ex.add_argument("dataset")
+    ex.add_argument("revision")
+    ex.add_argument("--representation", choices=("pose10", "joints"), required=True)
+    ex.add_argument("--root", type=Path)
     dl = subs.add_parser("delete", help="delete one published local revision")
     dl.add_argument("dataset")
     dl.add_argument("revision")
@@ -93,6 +98,16 @@ def main(argv=None):
 
         root = a.root or config["dataset"].get("root", "~/project/xcore-data")
         result = published_datasets(root / "lerobot")
+    elif a.command == "export":
+        from .export import export_revision
+
+        result = export_revision(
+            a.root or config["dataset"]["root"],
+            a.dataset,
+            a.revision,
+            a.representation,
+            max_skew_ms=config["dataset"]["max_skew_ms"],
+        )
     elif a.command == "delete":
         if not a.yes:
             raise ValueError("refusing to delete without --yes")

@@ -1,5 +1,13 @@
 # 协作边界
 
+2026-10-26 最新增量：用户只要求 LeLab 原 Upload 按钮拉取到本地并选择 pose/joints，
+暂不调整保存／停止时机。新增显式 CLI `export`，根据选中发布版的校验来源准备所选
+表示，使用来源摘要命名的独立发布目录，原 raw 和发布版不改写；converter 可选
+`expected_source_commits` 在转换前后检查来源，现有默认转换路径不变。
+本地网页网关及弹窗在父仓库，原 Hub 上传仍禁用。远端本次已部署 export/cli/convert，
+controller 122 项、dataset 22 项通过；真实 56 帧 pose/joints 拉取及本地回读通过。
+没有新增运动或采集，浏览器工具不可用，DOM 交互回归通过；未 commit／push。
+
 先阅读本项目 README；作为 controller 子模块时阅读父目录 `../AGENTS.md`，
 独立 checkout 时阅读相邻 `../xcore-controller/AGENTS.md`。
 本项目只负责远端记录／转换／浏览，不直接打开 SDK 或发运动命令。

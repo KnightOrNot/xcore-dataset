@@ -58,6 +58,11 @@ python -m xcore_dataset.cli jobs --root ~/project/xcore-data --retry JOB --run
 
 ## 表示类型（pose10 / joints）
 
+LeLab 网页拉取使用显式的 `export DATASET REVISION --representation pose10|joints`
+入口：已有所选表示时复用；否则根据发布版本中已校验的原始来源生成独立版本。
+校验源 `COMMITTED.json` 摘要和片段列表，重复导出复用相同来源摘要对应的版本；
+缺少字段或来源变化时拒绝。该入口不改变 controller 保存及停止时的转换行为。
+
 `convert --representation pose10|joints`，`queue --representation` 同样可选。
 默认 pose10 保持原有 10 维特征；joints 使用 `[q1..q6, closure]` 七维，单位为 rad，
 state 取 raw 的 `joints_rad`＋`closure`，action 取 `target_rad`＋`target_closure`。

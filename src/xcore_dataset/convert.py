@@ -187,7 +187,16 @@ def select(episode: Episode, fps: int, max_skew_ms: float):
     return targets, selected, max_error, used
 
 
-def convert(source, staging, destination, *, fps, max_skew_ms, representation="pose10"):
+def convert(
+    source,
+    staging,
+    destination,
+    *,
+    fps,
+    max_skew_ms,
+    representation="pose10",
+    expected_source_commits=None,
+):
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     source, staging, destination = map(Path, (source, staging, destination))
@@ -207,6 +216,12 @@ def convert(source, staging, destination, *, fps, max_skew_ms, representation="p
     ):
         raise ValueError("conversion must not write inside immutable raw input")
     paths = episode_paths(source)
+    if expected_source_commits is not None:
+        actual = [
+            dict(episode=p.name, sha256=file_hash(p / "COMMITTED.json")) for p in paths
+        ]
+        if actual != expected_source_commits:
+            raise ValueError("raw source changed since the selected revision")
     episodes = [load_episode(path) for path in paths]
     features = build_features(episodes, representation)
     for episode in episodes:
@@ -338,6 +353,11 @@ def convert(source, staging, destination, *, fps, max_skew_ms, representation="p
         )
         for episode in episodes
     ]
+    if (
+        expected_source_commits is not None
+        and source_commits != expected_source_commits
+    ):
+        raise ValueError("raw source changed during representation export")
     write_json(
         staging / "representation.json",
         dict(
@@ -418,5 +438,11 @@ def convert(source, staging, destination, *, fps, max_skew_ms, representation="p
     verify(staging)
     for episode in episodes:
         verify(episode.path, "COMMITTED.json")
+    if expected_source_commits is not None:
+        actual = [
+            dict(episode=p.name, sha256=file_hash(p / "COMMITTED.json")) for p in paths
+        ]
+        if actual != expected_source_commits:
+            raise ValueError("raw source changed during representation export")
     staging.rename(destination)
     return destination
