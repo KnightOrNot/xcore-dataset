@@ -31,6 +31,7 @@ def main(argv=None):
     s.add_argument("--root", type=Path)
     s.add_argument("--port", type=int)
     s.add_argument("--without-lelab", action="store_true")
+    s.add_argument("--allow-delete", action="store_true")
     q = subs.add_parser("queue", help="enqueue a sealed session for conversion")
     q.add_argument("session")
     q.add_argument("--root", type=Path)
@@ -42,6 +43,11 @@ def main(argv=None):
     j.add_argument("--retry", metavar="JOB", help="requeue one failed job")
     ds = subs.add_parser("datasets", help="list published revisions")
     ds.add_argument("--root", type=Path)
+    dl = subs.add_parser("delete", help="delete one published local revision")
+    dl.add_argument("dataset")
+    dl.add_argument("revision")
+    dl.add_argument("--root", type=Path)
+    dl.add_argument("--yes", action="store_true")
     a = p.parse_args(argv)
     config = tomllib.loads(a.config.read_text())
     if a.command == "demo":
@@ -87,6 +93,15 @@ def main(argv=None):
 
         root = a.root or config["dataset"].get("root", "~/project/xcore-data")
         result = published_datasets(root / "lerobot")
+    elif a.command == "delete":
+        if not a.yes:
+            raise ValueError("refusing to delete without --yes")
+        from .maintenance import delete_revision
+
+        root = a.root or config["dataset"].get("root", "~/project/xcore-data")
+        result = delete_revision(
+            Path(root).expanduser() / "lerobot", f"{a.dataset}/{a.revision}"
+        )
     elif a.command == "verify":
         m = verify(a.path)
         result = {"verified": True, "files": len(m["files"])}
@@ -108,7 +123,10 @@ def main(argv=None):
 
         uvicorn.run(
             create_app(
-                a.root or config["server"]["data_root"], lelab=not a.without_lelab
+                a.root or config["server"]["data_root"],
+                lelab=not a.without_lelab,
+                allow_delete=a.allow_delete
+                or config["server"].get("allow_delete", False),
             ),
             host=config["server"]["host"],
             port=a.port or config["server"]["port"],

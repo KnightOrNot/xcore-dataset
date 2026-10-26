@@ -1,4 +1,4 @@
-"""Read-only data browsing. No collection or motion is started by the UI."""
+"""Data browsing plus explicitly guarded deletion; no motion or collection."""
 
 import io
 import os
@@ -6,11 +6,18 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from pydantic import BaseModel
 
 from .integrity import verify
+from .maintenance import delete_revision
 
 
-def create_app(root, *, lelab=True):
+class DeleteRequest(BaseModel):
+    dataset_repo_id: str
+    delete_from_hub: bool = False
+
+
+def create_app(root, *, lelab=True, allow_delete=False):
     root = Path(root).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     app = FastAPI(title="Xcore remote datasets")
@@ -87,6 +94,21 @@ def create_app(root, *, lelab=True):
         Image.fromarray(preview).save(stream, format="PNG")
         return Response(stream.getvalue(), media_type="image/png")
 
+    @app.post("/delete-dataset")
+    def delete_dataset(request: DeleteRequest):
+        if not allow_delete:
+            raise HTTPException(403, "dataset deletion is disabled")
+        try:
+            result = delete_revision(
+                root,
+                request.dataset_repo_id,
+                delete_from_hub=request.delete_from_hub,
+            )
+        except (OSError, ValueError) as exc:
+            return {"success": False, "message": str(exc)}
+        print(f"[dataset] deleted {request.dataset_repo_id}", flush=True)
+        return result
+
     @app.get("/", response_class=HTMLResponse)
     def index():
         return (
@@ -119,8 +141,14 @@ def create_app(root, *, lelab=True):
         async def read_only_browser(request, call_next):
             if request.method not in ("GET", "HEAD", "OPTIONS"):
                 raise_error = False
-                # Official browsing may POST read-only metadata queries.
-                if request.url.path not in ("/dataset-info",):
+                # Official browsing may POST read-only metadata queries; delete
+                # is routed through the guarded local handler above.
+                allowed = (
+                    {"/dataset-info", "/delete-dataset"}
+                    if allow_delete
+                    else {"/dataset-info"}
+                )
+                if request.url.path not in allowed:
                     raise_error = True
                 if raise_error:
                     from fastapi.responses import JSONResponse

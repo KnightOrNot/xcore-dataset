@@ -82,6 +82,18 @@ raw 的逐帧字段区分两件事：
 `[dataset].max_skew_ms` 默认 100ms：15fps 双相机偶发丢帧时最近帧误差可达约 68ms；
 50ms 会拒绝合法片段。逐流实际最大误差仍完整记录，不能把 100ms 当作硬同步指标。
 
+## 删除已发布版本
+
+LeLab 的删除按钮调用受控的 `POST /delete-dataset`：只允许删除
+`<published_root>/<dataset_id>/rev-NNNN/` 且必须存在 `READY.json`；
+拒绝路径穿越、symlink、raw/staging/jobs 目录和 `delete_from_hub=true`。
+删除不可恢复，但不会触碰原始 raw。`[server].allow_delete` 控制是否开放
+（本部署为 true）；也可用 CLI：
+
+```bash
+python -m xcore_dataset.cli delete DATASET_ID REVISION --root ~/project/xcore-data --yes
+```
+
 ## 文件完整性
 
 `EpisodeWriter` 只在图像存在、记录校验和落盘后发布 `COMMITTED.json`。

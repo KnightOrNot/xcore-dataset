@@ -9,4 +9,7 @@ max_skew_ms = 100
 [server]
 host = "127.0.0.1"
 port = 8090
+# 允许经 LeLab 删除远端已发布的 revision（仅 READY 目录，本地磁盘，不允许 Hub）。
+# 删除不可恢复；raw、staging、jobs 永远不在此接口范围内。
+allow_delete = true
 data_root = "~/project/xcore-data/lerobot"
