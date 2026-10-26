@@ -8,7 +8,10 @@
 任务字符串通过 LeRobot task 元数据保存。RGB 为视频，深度为米制 float32 无损 image；
 raw 保留 RGB PNG／原始 uint16 Z16、depth scale、内外参和逐流时间信息。
 
-`requires-python` 为 3.11–3.12：转换、LeRobot 和 LeLab 使用独立 Python 3.12 环境；
+`requires-python` 为 3.11–3.12：raw writer 可在远端 Python 3.11 SDK 环境导入，转换、
+LeRobot 和 LeLab 使用独立 Python 3.12 环境；`dataset`／`app` extras 在 Python 3.11
+自动跳过 LeRobot、Torch 和 LeLab，
+避免 uv 在解析阶段把两个运行环境错误地合并。
 远端 controller 的 3.11 SDK 运行时只导入 `xcore_dataset.raw`（numpy/Pillow），
 不加载 LeRobot、FastAPI 或转换依赖。
 
@@ -17,7 +20,7 @@ raw 保留 RGB PNG／原始 uint16 Z16、depth scale、内外参和逐流时间�
 相邻目录须存在 `xcore-adapters/`。使用独立 Python 3.12 环境：
 
 ```bash
-uv sync --extra dataset --extra app
+uv sync --python 3.12 --extra dataset --extra app
 uv run xcore-dataset demo data/raw/demo
 uv run --extra dataset xcore-dataset convert data/raw/demo data/staging/demo data/lerobot/demo/rev-0001
 uv run --extra dataset xcore-dataset verify data/lerobot/demo/rev-0001 --readback

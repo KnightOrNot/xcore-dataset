@@ -8,8 +8,16 @@ requires-python = ">=3.11,<3.13"
 dependencies = ["xcore-adapters", "numpy>=2,<3", "pillow>=11", "fastapi>=0.115", "uvicorn>=0.34"]
 
 [project.optional-dependencies]
-dataset = ["lerobot[dataset,hardware]==0.6.0", "torch>=2.7,<2.12", "torchvision>=0.22,<0.27"]
-app = ["LeLab"]
+dataset = [
+    "lerobot[dataset,hardware]==0.6.0; python_version >= '3.12'",
+    "torch>=2.7,<2.12; python_version >= '3.12'",
+    "torchvision>=0.22,<0.27; python_version >= '3.12'",
+]
+# The raw writer is imported by the remote Python 3.11 controller runtime,
+# while LeLab is only installable in the Python 3.12 data environment.  Keep
+# the extra selectable from a 3.11-compatible project without making uv solve
+# an impossible universal dependency set.
+app = ["LeLab; python_version >= '3.12'"]
 
 [project.scripts]
 xcore-dataset = "xcore_dataset.cli:main"
@@ -24,7 +32,7 @@ torch = {index = "pytorch-cpu", marker = "sys_platform == 'linux'"}
 torchvision = {index = "pytorch-cpu", marker = "sys_platform == 'linux'"}
 
 [tool.uv]
-override-dependencies = ["lerobot[dataset,hardware,core-scripts,feetech,training,viz,av-dep,accelerate-dep,pynput-dep,pyserial-dep,deepdiff-dep]==0.6.0"]
+override-dependencies = ["lerobot[dataset,hardware,core-scripts,feetech,training,viz,av-dep,accelerate-dep,pynput-dep,pyserial-dep,deepdiff-dep]==0.6.0; python_version >= '3.12'"]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
