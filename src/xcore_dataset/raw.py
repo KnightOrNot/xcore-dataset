@@ -51,6 +51,14 @@ def validate_row(row):
         uncertainty = frame.get("uncertainty_ns")
         if type(uncertainty) is not int or uncertainty < 0:
             raise ValueError("clock uncertainty must be explicit")
+        if "clock_uncertainty_ns" in frame:
+            clock = frame["clock_uncertainty_ns"]
+            if type(clock) is not int or clock < 0:
+                raise ValueError("clock uncertainty must be a nonnegative integer")
+        if "age_ns" in frame:
+            age = frame["age_ns"]
+            if type(age) is not int or age < 0:
+                raise ValueError("frame age must be a nonnegative integer")
 
 
 class EpisodeWriter:

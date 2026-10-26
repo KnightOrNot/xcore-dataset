@@ -225,3 +225,33 @@ def test_jobs_keep_pose_and_joint_revisions_distinct(tmp_path):
         ("session_both", "pose10"),
         ("session_both-joints", "joints"),
     }
+
+
+def test_same_frame_with_different_sample_age_is_not_a_conflict(tmp_path):
+    from xcore_dataset.convert import load_episode
+
+    source = make_demo(tmp_path / "raw", frames=3)
+    rows = [
+        json.loads(line) for line in (source / "samples.jsonl").read_text().splitlines()
+    ]
+    for stream in ("cam1_rgb", "cam1_depth", "cam2_rgb", "cam2_depth"):
+        frame = dict(rows[0]["images"][stream])
+        frame["uncertainty_ns"] = frame["uncertainty_ns"] + 1000
+        rows[1]["images"][stream] = frame
+    (source / "samples.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n"
+    )
+    (source / "COMMITTED.json").unlink()
+    write_json(
+        source / "COMMITTED.json", {"frames": len(rows), "files": inventory(source)}
+    )
+    episode = load_episode(source)
+    assert episode.streams["cam1_rgb"][0]["uncertainty_ns"] == 1000
+    # Recording-time frame age is not clock error: select must not add it.
+    fresh = load_episode(make_demo(tmp_path / "fresh", frames=3))
+    fresh.streams["cam1_rgb"][0]["uncertainty_ns"] = 500_000_000
+    from xcore_dataset.convert import select
+
+    _, selected, errors, _ = select(fresh, 10, 50)
+    assert selected[0][1]["cam1_rgb"]["timestamp_ns"] == fresh.times[0]
+    assert errors["cam1_rgb"] == 0

@@ -57,6 +57,14 @@ def episode_paths(source: Path) -> list[Path]:
     return [source]
 
 
+def _frame_identity(frame: dict) -> dict:
+    return {
+        key: value
+        for key, value in frame.items()
+        if key not in ("uncertainty_ns", "age_ns")
+    }
+
+
 def load_episode(path: Path) -> Episode:
     meta, rows = read_episode(path)
     times = [r["timestamp_ns"] for r in rows]
@@ -67,9 +75,24 @@ def load_episode(path: Path) -> Episode:
         for row in rows:
             frame = row["images"][stream]
             key = frame["timestamp_ns"]
-            if key in unique and unique[key] != frame:
-                raise ValueError("conflicting image metadata at same timestamp")
-            unique[key] = frame
+            if key in unique:
+                # Multiple robot samples may reference one physical frame.
+                # Their per-sample age differs legitimately; keep the most
+                # conservative uncertainty and reject only identity changes.
+                previous = unique[key]
+                if _frame_identity(previous) != _frame_identity(frame):
+                    raise ValueError("conflicting image metadata at same timestamp")
+                merged = dict(previous)
+                merged["uncertainty_ns"] = max(
+                    int(previous["uncertainty_ns"]), int(frame["uncertainty_ns"])
+                )
+                if "age_ns" in previous or "age_ns" in frame:
+                    merged["age_ns"] = max(
+                        int(previous.get("age_ns", 0)), int(frame.get("age_ns", 0))
+                    )
+                unique[key] = merged
+            else:
+                unique[key] = dict(frame)
         streams[stream] = [unique[t] for t in sorted(unique)]
     return Episode(path, meta, rows, times, streams)
 
@@ -146,7 +169,11 @@ def select(episode: Episode, fps: int, max_skew_ms: float):
             options = episode.streams[stream]
             j = nearest([f["timestamp_ns"] for f in options], stamp)
             item = options[j]
-            error = abs(item["timestamp_ns"] - stamp) + item["uncertainty_ns"]
+            # uncertainty_ns in older raw is the recording-time frame age,
+            # not a clock-mapping error. Only explicit clock uncertainty is
+            # added to the matching error; age is reported separately.
+            clock = int(item.get("clock_uncertainty_ns", 0))
+            error = abs(item["timestamp_ns"] - stamp) + clock
             errors[stream] = error
             used[stream].add(j)
             images[stream] = item
@@ -345,9 +372,15 @@ def convert(source, staging, destination, *, fps, max_skew_ms, representation="p
         },
     )
     max_error = {}
+    max_age = {}
     for episode in episodes:
         for name, value in episode.errors.items():
             max_error[name] = max(max_error.get(name, 0), value)
+        for row in episode.rows:
+            for stream in STREAMS:
+                frame = row["images"][stream]
+                age = int(frame.get("age_ns", frame.get("uncertainty_ns", 0)))
+                max_age[stream] = max(max_age.get(stream, 0), age / 1e6)
     write_json(
         staging / "quality_report.json",
         dict(
@@ -366,6 +399,7 @@ def convert(source, staging, destination, *, fps, max_skew_ms, representation="p
             output_frames=expected,
             fps=fps,
             max_error_ms=max_error,
+            max_recorded_frame_age_ms=max_age,
             reused_frames={
                 stream: sum(
                     len(episode.selected) - len(episode.used[stream])

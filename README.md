@@ -69,6 +69,19 @@ episode、源 COMMITTED SHA-256），READY 清单包含该文件。关节转换�
 `xcore_dataset.cli datasets --root DATA_ROOT` 只读列出已发布版本及 representation；
 旧 EE10 版本没有标记时按 `meta/info.json` 中 observation.state 的维度推断（10/7）。
 
+## 图像时间语义
+
+raw 的逐帧字段区分两件事：
+
+- `clock_uncertainty_ns`：相机时钟映射到主机时间的误差；同机接收时间为 0。
+- `age_ns`：采样时最近相机帧的年龄（只用于审计）。旧版本把该年龄写进
+  `uncertainty_ns`；转换器现在只把 `abs(frame_time - target) + clock_uncertainty_ns`
+  作为匹配误差，并把旧 `uncertainty_ns`／新 `age_ns` 的最大值记录到
+  `quality_report.json` 的 `max_recorded_frame_age_ms`，不再当作时钟误差拒绝数据。
+
+`[dataset].max_skew_ms` 默认 100ms：15fps 双相机偶发丢帧时最近帧误差可达约 68ms；
+50ms 会拒绝合法片段。逐流实际最大误差仍完整记录，不能把 100ms 当作硬同步指标。
+
 ## 文件完整性
 
 `EpisodeWriter` 只在图像存在、记录校验和落盘后发布 `COMMITTED.json`。

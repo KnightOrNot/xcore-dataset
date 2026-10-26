@@ -2,7 +2,9 @@
 # Remote data root: raw/, staging/, lerobot/, jobs/, reports/.
 root = "~/project/xcore-data"
 fps = 10
-max_skew_ms = 50
+# 匹配容差（毫秒）。15fps 相机偶发丢帧时最近帧误差可达约 68ms；
+# 低于此值的真实片段会被拒绝。逐流实际最大误差仍写入 quality_report.json。
+max_skew_ms = 100
 
 [server]
 host = "127.0.0.1"
