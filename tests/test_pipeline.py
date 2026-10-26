@@ -20,7 +20,7 @@ def test_real_lerobot_dual_rgbd_roundtrip(tmp_path):
     verify(output)
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
-    ds = LeRobotDataset("local/published", root=output, depth_output_unit="m")
+    ds = LeRobotDataset("local/rev-0001", root=output, depth_output_unit="m")
     got = ds[0]
     assert got["observation.state"].shape == (10,)
     assert got["action"].shape == (10,)
@@ -136,3 +136,92 @@ def test_browser_never_initializes_hardware_and_blocks_mutation(tmp_path):
         assert c.get("/edit-dataset").status_code == 200
         assert c.post("/delete-dataset", json={}).status_code == 403
         assert c.get("/api/verify", params={"dataset": "../escape"}).status_code == 400
+
+
+def test_joint_representation_roundtrip_and_listing(tmp_path):
+    source = make_demo(tmp_path / "raw", frames=4)
+    destination = tmp_path / "lerobot" / "dataset_joints" / "rev-0001"
+    output = convert(
+        source,
+        tmp_path / "staging",
+        destination,
+        fps=10,
+        max_skew_ms=50,
+        representation="joints",
+    )
+    verify(output)
+    marker = json.loads((output / "representation.json").read_text())
+    assert marker["representation"] == "joints"
+    assert marker["state_names"] == ["q1", "q2", "q3", "q4", "q5", "q6", "closure"]
+    from xcore_dataset.published import published_datasets
+
+    listed = published_datasets(tmp_path / "lerobot")
+    assert listed[0]["representation"] == "joints"
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    ds = LeRobotDataset("local/rev-0001", root=output, depth_output_unit="m")
+    assert ds.features["observation.state"]["shape"] == (7,)
+    np.testing.assert_allclose(
+        ds[0]["observation.state"].numpy(),
+        [0.1, -0.2, 0.3, 0.0, 0.5, 1.0, 0.25],
+        rtol=1e-6,
+    )
+    np.testing.assert_allclose(
+        ds[0]["action"].numpy(), [0.102, -0.198, 0.302, 0.002, 0.502, 1.002, 0.3]
+    )
+
+
+def test_joint_representation_rejects_raw_without_joint_fields(tmp_path):
+    source = make_demo(tmp_path / "raw", frames=3)
+    rows = [
+        json.loads(line) for line in (source / "samples.jsonl").read_text().splitlines()
+    ]
+    for row in rows:
+        for key in (
+            "joints_rad",
+            "target_rad",
+            "requested_target_rad",
+            "closure",
+            "target_closure",
+        ):
+            row.pop(key)
+    (source / "samples.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n"
+    )
+    (source / "COMMITTED.json").unlink()
+    write_json(
+        source / "COMMITTED.json", {"frames": len(rows), "files": inventory(source)}
+    )
+    with pytest.raises(ValueError, match="joints representation requires"):
+        convert(
+            source,
+            tmp_path / "staging",
+            tmp_path / "out",
+            fps=10,
+            max_skew_ms=50,
+            representation="joints",
+        )
+    assert not (tmp_path / "out").exists()
+
+
+def test_jobs_keep_pose_and_joint_revisions_distinct(tmp_path):
+    from xcore_dataset.jobs import enqueue, run_pending
+    from xcore_dataset.published import published_datasets
+
+    root = tmp_path / "data"
+    session = root / "raw" / "session_both"
+    episode = session / "episodes" / "episode_000000"
+    episode.parent.mkdir(parents=True)
+    make_demo(episode, frames=3)
+    pose_job = enqueue(root, session, fps=10, max_skew_ms=50)
+    joint_job = enqueue(root, session, fps=10, max_skew_ms=50, representation="joints")
+    assert pose_job["dataset_id"] == "session_both"
+    assert joint_job["dataset_id"] == "session_both-joints"
+    assert pose_job["destination"] != joint_job["destination"]
+    jobs = run_pending(root)
+    assert {job["state"] for job in jobs} == {"ready"}
+    listed = published_datasets(root / "lerobot")
+    assert {(item["dataset_id"], item["representation"]) for item in listed} == {
+        ("session_both", "pose10"),
+        ("session_both-joints", "joints"),
+    }

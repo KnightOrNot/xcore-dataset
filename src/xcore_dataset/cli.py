@@ -23,6 +23,7 @@ def main(argv=None):
     c.add_argument("destination", type=Path)
     c.add_argument("--fps", type=int)
     c.add_argument("--max-skew-ms", type=float)
+    c.add_argument("--representation", choices=("pose10", "joints"), default="pose10")
     v = subs.add_parser("verify")
     v.add_argument("path", type=Path)
     v.add_argument("--readback", action="store_true")
@@ -34,10 +35,13 @@ def main(argv=None):
     q.add_argument("session")
     q.add_argument("--root", type=Path)
     q.add_argument("--dataset-id")
+    q.add_argument("--representation", choices=("pose10", "joints"), default="pose10")
     j = subs.add_parser("jobs", help="list or run conversion jobs")
     j.add_argument("--root", type=Path)
     j.add_argument("--run", action="store_true")
     j.add_argument("--retry", metavar="JOB", help="requeue one failed job")
+    ds = subs.add_parser("datasets", help="list published revisions")
+    ds.add_argument("--root", type=Path)
     a = p.parse_args(argv)
     config = tomllib.loads(a.config.read_text())
     if a.command == "demo":
@@ -56,6 +60,7 @@ def main(argv=None):
                 max_skew_ms=a.max_skew_ms
                 if a.max_skew_ms is not None
                 else config["dataset"]["max_skew_ms"],
+                representation=a.representation,
             )
         )
     elif a.command == "queue":
@@ -68,6 +73,7 @@ def main(argv=None):
             fps=config["dataset"]["fps"],
             max_skew_ms=config["dataset"]["max_skew_ms"],
             dataset_id=a.dataset_id,
+            representation=a.representation,
         )
     elif a.command == "jobs":
         from .jobs import list_jobs, retry, run_pending
@@ -76,6 +82,11 @@ def main(argv=None):
         if a.retry:
             retry(root, a.retry)
         result = run_pending(root) if (a.run or a.retry) else list_jobs(root)
+    elif a.command == "datasets":
+        from .published import published_datasets
+
+        root = a.root or config["dataset"].get("root", "~/project/xcore-data")
+        result = published_datasets(root / "lerobot")
     elif a.command == "verify":
         m = verify(a.path)
         result = {"verified": True, "files": len(m["files"])}

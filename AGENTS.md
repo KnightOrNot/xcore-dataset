@@ -9,3 +9,8 @@ LeRobot 0.6.0＋锁定 LeLab，使用 CPU Torch；不要遗漏直接 Torch 依�
 当前真实 writer/loader 的双 RGBD、EE10、12 维力、掩码、中文 task 回归已通过；
 实际数据验收只完成合成数据，不代表现场运动、同步或连续录像已验收。
 LeLab 只开放浏览接口；增加能力时不能顺带开放运动、外部上传或删除。
+
+2026-10-26：新增 pose10／joints 两种表示。joints 从 raw 的 joints_rad／target_rad／
+closure／target_closure 构建，七维、rad；缺少字段必须拒绝，不能对 pose10 做 IK。
+发布目录写 representation.json；joints 默认 dataset_id 为 `<session>-joints`，
+不得与 pose10 互相覆盖。pull 拉取前必须校验表示。

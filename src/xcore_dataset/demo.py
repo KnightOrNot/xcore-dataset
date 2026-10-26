@@ -53,10 +53,17 @@ def make_demo(path, frames=12, fps=10):
             t[:3, 3] = [i * 0.001, 0.2, 0.3]
             state = pose10(t, 0.25)
             t[0, 3] += 0.002
+            joints = [0.1 + i * 0.001, -0.2, 0.3, 0.0, 0.5, 1.0]
+            target_joints = [value + 0.002 for value in joints]
             row = dict(
                 timestamp_ns=stamp,
                 state=state.tolist(),
                 action=pose10(t, 0.3).tolist(),
+                joints_rad=joints,
+                requested_target_rad=target_joints,
+                target_rad=target_joints,
+                closure=0.25,
+                target_closure=0.3,
                 wrench=[0.0] * 12,
                 wrench_valid=[False, False],
                 images={},

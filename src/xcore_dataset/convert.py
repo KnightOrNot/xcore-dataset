@@ -13,10 +13,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from xcore_adapters.pose import POSE_NAMES, WRENCH_NAMES
+from xcore_adapters.pose import (
+    JOINT_NAMES,
+    POSE_NAMES,
+    WRENCH_NAMES,
+    validate_joint_state,
+)
 
 from .integrity import file_hash, inventory, verify, write_json
 from .raw import STREAMS, read_episode, read_image
+
+REPRESENTATIONS = ("pose10", "joints")
 
 
 def nearest(times, target):
@@ -67,10 +74,16 @@ def load_episode(path: Path) -> Episode:
     return Episode(path, meta, rows, times, streams)
 
 
-def build_features(episodes: list[Episode]) -> dict:
+def build_features(episodes: list[Episode], representation: str) -> dict:
+    if representation == "pose10":
+        names, size = POSE_NAMES, 10
+    elif representation == "joints":
+        names, size = JOINT_NAMES, 7
+    else:
+        raise ValueError(f"unknown representation: {representation}")
     features = {
-        "observation.state": dict(dtype="float32", shape=(10,), names=POSE_NAMES),
-        "action": dict(dtype="float32", shape=(10,), names=POSE_NAMES),
+        "observation.state": dict(dtype="float32", shape=(size,), names=names),
+        "action": dict(dtype="float32", shape=(size,), names=names),
         "observation.wrench": dict(dtype="float32", shape=(12,), names=WRENCH_NAMES),
         "observation.wrench_valid": dict(
             dtype="bool", shape=(2,), names=["sensor1", "sensor2"]
@@ -97,6 +110,25 @@ def build_features(episodes: list[Episode]) -> dict:
             feature["info"] = dict(is_depth_map=True, depth_unit="m")
         features["observation.images." + stream] = feature
     return features
+
+
+def state_action(row: dict, representation: str):
+    """Build state/action from the original raw fields; never derive joints by IK."""
+    if representation == "pose10":
+        return np.asarray(row["state"], np.float32), np.asarray(
+            row["action"], np.float32
+        )
+    if representation == "joints":
+        try:
+            state = [*row["joints_rad"], row["closure"]]
+            action = [*row["target_rad"], row["target_closure"]]
+        except KeyError as exc:
+            raise ValueError(
+                "joints representation requires raw joints_rad/target_rad/"
+                f"closure/target_closure; missing {exc}"
+            ) from exc
+        return validate_joint_state(state), validate_joint_state(action)
+    raise ValueError(f"unknown representation: {representation}")
 
 
 def select(episode: Episode, fps: int, max_skew_ms: float):
@@ -128,7 +160,7 @@ def select(episode: Episode, fps: int, max_skew_ms: float):
     return targets, selected, max_error, used
 
 
-def convert(source, staging, destination, *, fps, max_skew_ms):
+def convert(source, staging, destination, *, fps, max_skew_ms, representation="pose10"):
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     source, staging, destination = map(Path, (source, staging, destination))
@@ -139,6 +171,8 @@ def convert(source, staging, destination, *, fps, max_skew_ms):
         or max_skew_ms <= 0
     ):
         raise ValueError("invalid conversion frequency/tolerance")
+    if representation not in REPRESENTATIONS:
+        raise ValueError(f"unknown representation: {representation}")
     if any(p.exists() or p.is_symlink() for p in (staging, destination)):
         raise FileExistsError("staging and destination must be new directories")
     if any(
@@ -147,7 +181,7 @@ def convert(source, staging, destination, *, fps, max_skew_ms):
         raise ValueError("conversion must not write inside immutable raw input")
     paths = episode_paths(source)
     episodes = [load_episode(path) for path in paths]
-    features = build_features(episodes)
+    features = build_features(episodes, representation)
     for episode in episodes:
         (episode.selected, episode.errors, episode.used) = select(
             episode, fps, max_skew_ms
@@ -162,7 +196,9 @@ def convert(source, staging, destination, *, fps, max_skew_ms):
         root=staging,
         fps=fps,
         features=features,
-        robot_type="rokae_cr7_ee10",
+        robot_type="rokae_cr7_ee10"
+        if representation == "pose10"
+        else "rokae_cr7_joints",
         image_writer_threads=2,
     )
     audits = []
@@ -170,9 +206,10 @@ def convert(source, staging, destination, *, fps, max_skew_ms):
         for index, episode in enumerate(episodes):
             for i, images in episode.selected:
                 row = episode.rows[i]
+                state, action = state_action(row, representation)
                 frame = {
-                    "observation.state": np.asarray(row["state"], np.float32),
-                    "action": np.asarray(row["action"], np.float32),
+                    "observation.state": state,
+                    "action": action,
                     "observation.wrench": np.asarray(row["wrench"], np.float32),
                     "observation.wrench_valid": np.asarray(row["wrench_valid"], bool),
                     "task": episode.meta["task"],
@@ -208,14 +245,15 @@ def convert(source, staging, destination, *, fps, max_skew_ms):
             got = loaded[position]
             position += 1
             row = episode.rows[i]
-            for key, rawkey in (
-                ("observation.state", "state"),
-                ("action", "action"),
-                ("observation.wrench", "wrench"),
-                ("observation.wrench_valid", "wrench_valid"),
+            state, action = state_action(row, representation)
+            for key, expected_value in (
+                ("observation.state", state),
+                ("action", action),
+                ("observation.wrench", row["wrench"]),
+                ("observation.wrench_valid", row["wrench_valid"]),
             ):
                 np.testing.assert_allclose(
-                    got[key].numpy(), row[rawkey], rtol=1e-6, atol=1e-6
+                    got[key].numpy(), expected_value, rtol=1e-6, atol=1e-6
                 )
             if got["task"] != episode.meta["task"]:
                 raise ValueError("task text lost during conversion")
@@ -267,6 +305,32 @@ def convert(source, staging, destination, *, fps, max_skew_ms):
                     )
                     + "\n"
                 )
+    source_commits = [
+        dict(
+            episode=episode.path.name, sha256=file_hash(episode.path / "COMMITTED.json")
+        )
+        for episode in episodes
+    ]
+    write_json(
+        staging / "representation.json",
+        dict(
+            format="xcore_representation_v1",
+            representation=representation,
+            state_names=features["observation.state"]["names"],
+            action_names=features["action"]["names"],
+            units="m, column-major rotation, closure"
+            if representation == "pose10"
+            else "rad, closure",
+            action_semantics=episodes[0].meta.get("action_source"),
+            tcp=episodes[0].meta.get("tcp"),
+            source_session=(source / "session.json").is_file()
+            and json.loads((source / "session.json").read_text()).get("session")
+            or source.name,
+            source_commits=source_commits,
+            dataset_id=destination.parent.name,
+            revision=destination.name,
+        ),
+    )
     write_json(
         staging / "versions.json",
         {
@@ -287,13 +351,8 @@ def convert(source, staging, destination, *, fps, max_skew_ms):
     write_json(
         staging / "quality_report.json",
         dict(
-            source_commits=[
-                dict(
-                    episode=episode.path.name,
-                    sha256=file_hash(episode.path / "COMMITTED.json"),
-                )
-                for episode in episodes
-            ],
+            representation=representation,
+            source_commits=source_commits,
             episodes=[
                 dict(
                     index=index,

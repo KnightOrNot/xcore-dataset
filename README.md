@@ -56,6 +56,19 @@ python -m xcore_dataset.cli jobs --root ~/project/xcore-data --retry JOB --run
 （`LD_LIBRARY_PATH=~/project/xcore-runtime/media/lib:…/torch/lib`，`PATH` 含
 `media/bin`），否则 TorchCodec 加载失败；服务 unit 已带这些环境变量。
 
+## 表示类型（pose10 / joints）
+
+`convert --representation pose10|joints`，`queue --representation` 同样可选。
+默认 pose10 保持原有 10 维特征；joints 使用 `[q1..q6, closure]` 七维，单位为 rad，
+state 取 raw 的 `joints_rad`＋`closure`，action 取 `target_rad`＋`target_closure`。
+关节表示**不会**对 pose10 做 IK，也不会从下一帧实际值替代目标；缺少字段的旧 raw
+明确拒绝。发布目录写入 `representation.json`（schema、名称、单位、来源 session／
+episode、源 COMMITTED SHA-256），READY 清单包含该文件。关节转换默认 dataset_id 为
+`<session>-joints`，与 pose10 版本分开，不能互相覆盖。
+
+`xcore_dataset.cli datasets --root DATA_ROOT` 只读列出已发布版本及 representation；
+旧 EE10 版本没有标记时按 `meta/info.json` 中 observation.state 的维度推断（10/7）。
+
 ## 文件完整性
 
 `EpisodeWriter` 只在图像存在、记录校验和落盘后发布 `COMMITTED.json`。

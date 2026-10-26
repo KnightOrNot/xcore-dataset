@@ -61,6 +61,7 @@ def enqueue(
     fps: int,
     max_skew_ms: float,
     dataset_id: str | None = None,
+    representation: str = "pose10",
 ) -> dict:
     root = data_root(root)
     session = Path(session).expanduser()
@@ -71,7 +72,11 @@ def enqueue(
         raise ValueError("session must be under the data root's raw directory")
     if not (session / "episodes").is_dir():
         raise ValueError("session has no episodes directory")
-    dataset_id = dataset_id or session.name
+    if representation not in ("pose10", "joints"):
+        raise ValueError("representation must be pose10 or joints")
+    dataset_id = dataset_id or (
+        session.name if representation == "pose10" else session.name + "-joints"
+    )
     if not ID.fullmatch(dataset_id):
         raise ValueError("invalid dataset_id")
     revision = next_revision(root, dataset_id)
@@ -94,6 +99,7 @@ def enqueue(
         "revision": revision,
         "fps": fps,
         "max_skew_ms": max_skew_ms,
+        "representation": representation,
         "destination": str(root / "lerobot" / dataset_id / revision),
         "error": None,
     }
@@ -149,6 +155,7 @@ def run_pending(root, *, max_attempts: int = 3) -> list[dict]:
                 destination,
                 fps=job["fps"],
                 max_skew_ms=job["max_skew_ms"],
+                representation=job.get("representation", "pose10"),
             )
         except Exception as exc:  # noqa: BLE001 - recorded for retry/diagnosis
             job["state"] = "failed"
